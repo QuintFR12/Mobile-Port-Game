@@ -23,6 +23,11 @@ Workflow:
 
 Het promotiescript voert eerst `swift test` uit en accepteert alleen een fast-forward naar `live/main`. Wijzigingen die nog niet getest, gecommit of gepushed zijn, worden geblokkeerd.
 
+Huidige splitsing:
+
+- `Test/` bevat de huidige app-implementatie op `test/main`.
+- `Live/` blijft op de laatste goedgekeurde `live/main`-versie.
+
 Een onbeheerde, eigen placeholder-versie van een haven-terminalspel in Swift en SwiftUI. De app gebruikt geen externe SDK's, merklogo's, echte havennamen of externe API's.
 
 ## Wat zit erin

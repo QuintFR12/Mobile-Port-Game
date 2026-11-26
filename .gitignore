@@ -1,3 +1,7 @@
 .build/
 .swiftpm/
 DerivedData/
+Test/
+Live/
+**/xcuserdata/
+*.xcuserstate

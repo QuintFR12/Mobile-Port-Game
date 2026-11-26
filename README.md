@@ -1,114 +1,110 @@
 # Mobile Port Game
 
-Een oorspronkelijk, haven-geinspireerd SwiftUI-puzzelspel voor iOS en iPadOS. De app gebruikt geen merknamen, officiële logo's, externe SDK's, IAP of backend.
+## Standaardwerkmap en Test/Live-workflow
 
-De visuals zijn een compact, fictief havengebied met native RealityKit-primitives: asfalt, havenwater, kade, terminalgebouwen, containerkranen, barges, shortsea- en deepsea-placeholders, treinwagons en vrachtwagens. De camera staat vast in een diagonaal/top-down planweergave; er is geen AR-camera-verplichting. Gameplaymenu's, timers, scores en upgrademenu's blijven SwiftUI.
+Werk altijd vanuit:
 
-Deze placeholders stellen alleen verschillende speltypen en capaciteiten voor. Zij leggen geen actuele havenprocedures, bedrijfsverplichtingen of feitelijke havenroutes vast.
+```text
+/Users/adanevanarkel/Desktop/Quint/GitHub/Mobile-Port-Game
+```
 
-## Inhoud
+De app heeft twee vaste werkmappen in deze hoofdmap:
 
-- Casual modus zonder timer.
-- Competitieve 90-seconderonde met stabiele startsituatie en persoonlijke highscore.
-- Roguelike-run van 4-6 rondes met drie tijdelijke upgrademogelijkheden na iedere ronde.
-- Sleep containerkaarten naar barge-, shortsea-, deepsea-, trein-, truck- of terminalplekken.
-- Score, streak, fouten, ronde-einde en plaatselijke `UserDefaults`-highscore.
-- Optionele rewarded-ad-hook als stub, standaard uitgeschakeld.
-- Lokale avatarcreator: havenachtergrond, containerkleur, kraansymbool en initialen.
+- `Test/`: ontwikkelversie, gekoppeld aan branch `test/main`.
+- `Live/`: goedgekeurde versie, gekoppeld aan branch `live/main`.
+
+Workflow:
+
+1. Open `Test/MobilePortGame.xcodeproj` in Xcode.
+2. Bouw, test en controleer in Xcode op iPhone/iPad.
+3. Commit en push wijzigingen vanuit `Test/` naar `test/main`.
+4. Voer `Scripts/promote-test-to-live.sh` uit.
+5. Open pas daarna `Live/MobilePortGame.xcodeproj`.
+
+Het promotiescript voert eerst `swift test` uit en accepteert alleen een fast-forward naar `live/main`. Wijzigingen die nog niet getest, gecommit of gepushed zijn, worden geblokkeerd.
+
+Huidige splitsing:
+
+- `Test/` bevat de huidige app-implementatie op `test/main`.
+- `Live/` blijft op de laatste goedgekeurde `live/main`-versie.
+
+Een onbeheerde, eigen placeholder-versie van een haven-terminalspel in Swift en SwiftUI. De app gebruikt geen externe SDK's, merklogo's, echte havennamen of externe API's.
+
+## Wat zit erin
+
+- Casual modus zonder stressvolle ronde-timer.
+- Competitieve modus met 90 seconden en vaste startcondities.
+- Roguelike-run van 4-6 rondes met tijdelijke upgradekeuzes.
+- Sleep containers naar Schip, Trein of Terminal.
+- Lokale persoonlijke highscore via `UserDefaults`.
+- Feature-flagged rewarded-ad-stub; standaard uitgeschakeld.
+- Geen IAP, multiplayer-backend of verplichte advertenties.
 
 ## Vereisten
 
-- macOS met een volledige Xcode-installatie (Xcode 16 of nieuwer; iOS 18 SDK of nieuwer voor `RealityView`).
-- Voor een echt apparaat: Apple ID of Apple Developer-account en een geldig signing-team.
-- Voor TestFlight: Apple Developer-programma-toegang en App Store Connect.
+- Een Mac met macOS 14 of nieuwer voor de SwiftPM-macOS-target.
+- Xcode 15 of nieuwer met iOS 16 SDK of nieuwer.
+- Een Apple ID voor Simulator. Voor apparaatbuilds of TestFlight wordt een Apple Development/Distribution-account gebruikt.
 
-## Xcode-project openen
+## Openen in Xcode
 
-```bash
-cd /pad/naar/Mobile-Port-Game
-open MobilePortGame.xcodeproj
-```
+1. Clone en open de repository:
 
-Kies in Xcode het scheme **MobilePortGame** en daarna het target **MobilePortApp**.
+   ```bash
+   git clone https://github.com/QuintFR12/Mobile-Port-Game.git
+   cd Mobile-Port-Game
+   open Package.swift
+   ```
 
-Controleer onder **Signing & Capabilities**:
-
-- Bundle Identifier: `com.mobileport.game`
-- Signing & Capabilities > Team: jouw gekozen development team
-- Target > General > Supported Destinations: iPhone en iPad
-
-## Bouwen en draaien
-
-1. Kies een iPhone- of iPad-simulator onder **Product > Destination**.
-2. Voer **Product > Run** uit of druk op `Cmd-R`.
-3. Wacht tot de build klaar is en gebruik het appvenster.
-
-Voor een CLI-build met Xcode geselecteerd:
-
-```bash
-xcodebuild \
-  -project MobilePortGame.xcodeproj \
-  -scheme MobilePortGame \
-  -sdk iphonesimulator \
-  -destination 'generic/platform=iOS Simulator' \
-  build
-```
-
-In deze shellomgeving is `xcodebuild` mogelijk niet actief omdat alleen Command Line Tools beschikbaar zijn. Gebruik dan een terminal waar Xcode als actieve developer directory staat:
-
-```bash
-sudo xcode-select --switch /Applications/Xcode.app/Contents/Developer
-```
+2. Kies in Xcode het target `MobilePortApp`.
+3. Kies een iPhone- of iPad-simulator bij **Product > Destination**.
+4. Start met **Product > Run** of druk op `Cmd-R`.
+5. Xcode kan het Swift-package-executable openen als een macOS-laadbare app. Voor een echte iOS-app moet het package als iOS-app-product worden gegenereerd of als Xcode-appproject worden aangemaakt en op het package targeten.
 
 ## Unit tests
 
-Open het project en voer **Product > Test** uit (`Cmd-U`), of vanaf een terminal met Xcode:
+Via Xcode:
 
-```bash
-xcodebuild \
-  -project MobilePortGame.xcodeproj \
-  -scheme MobilePortGame \
-  -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
-  test
-```
+1. Open `Package.swift`.
+2. Kies een macOS-destination.
+3. Voer `Product > Test` uit of druk op `Cmd-U`.
 
-De suite test scores, rondestatus/timer-einde, upgrade-effecten en run-lengtes.
-
-Het Swift Package blijft optioneel beschikbaar voor core-only ontwikkeling:
+Via de terminal op een Mac met Xcode:
 
 ```bash
 swift test
 ```
 
-## iPhone/iPad-simulator
+De tests dekken scores, ronde-einde, roguelike-rondes en upgrade-effecten.
 
-1. Open **Window > Devices and Simulators**.
-2. Voeg minimaal een iPhone en iPad toe.
-3. Kies ieder toestel als Destination en voer `Cmd-R` uit.
-4. Test portret en landscape; de SwiftUI-layout schaalt voor beide.
+## Testen op iPhone en iPad
 
-## Installatie op een echt toestel
+### Simulator
 
-1. Verbind het iPhone of iPad via USB.
-2. Ontgrendel het toestel en toets Vertrouw deze computer toe.
-3. Kies het toestel als Destination.
-4. Kies je Team onder **Signing & Capabilities**.
-5. Voer `Cmd-R` uit.
-6. Bij een restrictie onder iOS: vertrouw het ontwikkelaarsprofiel via **Instellingen > Algemeen > VPN & apparaatbeheer**.
+1. Start een iPhone Simulator via **Window > Devices and Simulators**.
+2. Kies het simulatorapparaat als bestemming.
+3. Start de app met `Cmd-R`.
+4. Herhaal met minimaal een iPad-model en draai vervolgens naar liggend en staand.
+
+### Echt apparaat
+
+1. Verbind een iPhone/iPad via USB.
+2. Kies het apparaat onder **Destination**.
+3. Onder **Signing & Capabilities**: kies je Team.
+4. Controleer dat het package/app-target iOS ondersteunt.
+5. Voer `Cmd-R` uit en accepteer eventuele vertrouwen-/ontwikkelaarsinstellingen op het apparaat.
 
 ## TestFlight
 
-1. Maak in App Store Connect een apprecord met dezelfde bundle identifier.
-2. Meld je Apple Developer-team aan en activeer App Store Distribution signing.
-3. Kies in Xcode **Product > Archive** met een Device-destination.
-4. Open via **Window > Organizer** de nieuwe archive.
-5. Kies **Distribute App > App Store Connect > Upload**.
-6. Volg de validatievragen voor privacy, export en eventuele compliance.
-7. Open de build onder **TestFlight** in App Store Connect.
-8. Voeg interne testers toe of publiceer eerst via een interne review voor externe testers.
-9. Testers installeren de build via de TestFlight-app.
+1. Maak in App Store Connect een apprecord voor Mobile Port Game.
+2. Voeg je Apple Development-team en -gebruiker toe.
+3. Open het iOS-Xcodeproject/app-target en kies een correcte Bundle ID.
+4. Kies in Xcode **Product > Archive**.
+5. Upload via de Organizer naar App Store Connect.
+6. Voeg onder **TestFlight** externe of interne testers toe.
+7. Beantwoord eventuele export-, privacy- en nalevingsvragen.
+8. Wacht tot Apple de build verwerkt heeft en distributeer het interne/externe testtraject.
 
-## Feature flag voor rewarded ads
+## Rewarded-ad stub
 
-`RewardedAdStub` staat standaard op `false`. Er worden geen advertenties, SDK's, netwerkverzoeken of IAP-transacties uitgevoerd. Verbind pas later een SDK na een productbeslissing en behoud de externe beloning buiten de core-game-engine.
+De stub staat standaard uit. De integratie in `RewardedAdStub` accepteert alleen een optionele beloning en levert geen echte advertentie op. Om een SDK later te verbinden, gebruik een aparte feature-flag, controleer netwerk- en SDK-status en geef alleen het beloningsresultaat door na een geldig SDK-callback.

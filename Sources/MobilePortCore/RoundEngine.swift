@@ -12,7 +12,7 @@ public struct RoundEngine: Sendable {
     }
 
     public func fixedContainers(count: Int = 9) -> [CargoContainer] {
-        let sequence: [CargoType] = [.ship, .train, .terminal, .ship, .terminal, .train, .terminal, .ship, .train]
+        let sequence: [CargoType] = [.barge, .train, .shortsea, .truck, .deepsea, .terminal, .barge, .train, .truck]
         return (0..<min(count, sequence.count)).map {
             let id = UUID(uuidString: String(format: "00000000-0000-0000-0000-%012X", $0 + 1))!
             return CargoContainer(id: id, type: sequence[$0])

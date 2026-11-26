@@ -45,6 +45,27 @@ final class RoundEngineTests: XCTestCase {
     }
 }
 
+final class UserProfileTests: XCTestCase {
+    func testProfileInitialsAreTrimmedAndUppercased() {
+        let profile = UserProfile(initials: "abcde")
+        XCTAssertEqual(profile.initials, "ABC")
+    }
+
+    func testProfileCanBeEncodedAndDecoded() throws {
+        let profile = UserProfile(initials: "HX", background: .dusk, containerColor: .graphite, craneSymbol: .anchor)
+        let data = try JSONEncoder().encode(profile)
+        let decoded = try JSONDecoder().decode(UserProfile.self, from: data)
+        XCTAssertEqual(decoded, profile)
+    }
+
+    func testTransportPlaceholderPropertiesAreDistinct() {
+        XCTAssertLessThan(CargoType.barge.placeholderWaitSeconds, CargoType.deepsea.placeholderWaitSeconds)
+        XCTAssertGreaterThan(CargoType.deepsea.placeholderCapacity, CargoType.barge.placeholderCapacity)
+        XCTAssertEqual(CargoType.train.transportFamily, .land)
+        XCTAssertEqual(CargoType.barge.transportFamily, .water)
+    }
+}
+
 final class UpgradeTests: XCTestCase {
     func testExtraTimeAddsSeconds() {
         var effect = UpgradeEffect()

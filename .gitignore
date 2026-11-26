@@ -1,3 +1,5 @@
 .build/
 .swiftpm/
 DerivedData/
+Test/
+Live/

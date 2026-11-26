@@ -1,5 +1,28 @@
 # Mobile Port Game
 
+## Standaardwerkmap en Test/Live-workflow
+
+Werk altijd vanuit:
+
+```text
+/Users/adanevanarkel/Desktop/Quint/GitHub/Mobile-Port-Game
+```
+
+De app heeft twee vaste werkmappen in deze hoofdmap:
+
+- `Test/`: ontwikkelversie, gekoppeld aan branch `test/main`.
+- `Live/`: goedgekeurde versie, gekoppeld aan branch `live/main`.
+
+Workflow:
+
+1. Open `Test/MobilePortGame.xcodeproj` in Xcode.
+2. Bouw, test en controleer in Xcode op iPhone/iPad.
+3. Commit en push wijzigingen vanuit `Test/` naar `test/main`.
+4. Voer `Scripts/promote-test-to-live.sh` uit.
+5. Open pas daarna `Live/MobilePortGame.xcodeproj`.
+
+Het promotiescript voert eerst `swift test` uit en accepteert alleen een fast-forward naar `live/main`. Wijzigingen die nog niet getest, gecommit of gepushed zijn, worden geblokkeerd.
+
 Een onbeheerde, eigen placeholder-versie van een haven-terminalspel in Swift en SwiftUI. De app gebruikt geen externe SDK's, merklogo's, echte havennamen of externe API's.
 
 ## Wat zit erin

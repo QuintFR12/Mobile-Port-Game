@@ -477,6 +477,7 @@ struct GameView: View {
     let mode: GameMode
     @Environment(\.dismiss) private var dismiss
     @State private var containers: [CargoContainer]
+    @State private var selectedContainerID: UUID?
     @State private var secondsRemaining = 90
     @State private var score = 0
     @State private var streak = 0
@@ -613,6 +614,16 @@ struct GameView: View {
                 .foregroundStyle(.white.opacity(0.7))
         }
         .frame(width: 112, height: 120)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if let selectedContainerID,
+               let container = containers.first(where: { $0.id == selectedContainerID }) {
+                place(container, in: type)
+                self.selectedContainerID = nil
+            } else {
+                lastMessage = "Tik eerst een container aan"
+            }
+        }
         .dropDestination(for: String.self) { items, _ in
             guard let idText = items.first,
                   let container = containers.first(where: { $0.id.uuidString == idText }) else {
@@ -632,16 +643,26 @@ struct GameView: View {
                         .font(.title.bold())
                         .foregroundStyle(.white)
                 )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(.yellow, lineWidth: selectedContainerID == container.id ? 4 : 0)
+                )
             Text(container.type.title)
                 .font(.caption.bold())
                 .foregroundStyle(.white)
         }
         .frame(width: 100, height: 130)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            selectedContainerID = container.id
+            lastMessage = "Container \(container.type.title) gekozen"
+        }
         .draggable(container.id.uuidString)
     }
 
     private func place(_ container: CargoContainer, in destination: CargoType) {
         guard status == .playing else { return }
+        selectedContainerID = nil
         if container.type == destination {
             streak += 1
             let result = scoreEngine.placement(

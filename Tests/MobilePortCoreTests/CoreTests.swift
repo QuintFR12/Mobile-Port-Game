@@ -66,6 +66,99 @@ final class UserProfileTests: XCTestCase {
     }
 }
 
+final class SandboxWorldTests: XCTestCase {
+    func testHelpRequestsAreCappedAtTwoPerPlayer() {
+        let session = InProcessSandboxSession(capacity: 2)
+        let room = session.joinOrCreate(playerName: "A")
+        let playerID = room.world.players[0].id
+        XCTAssertTrue(session.addHelpRequest(playerID: playerID, kind: .freeCrane))
+        XCTAssertTrue(session.addHelpRequest(playerID: playerID, kind: .trainOrder))
+        XCTAssertFalse(session.addHelpRequest(playerID: playerID, kind: .deepseaCrane))
+        XCTAssertEqual(session.roomSnapshot()?.world.helpRequests.count, 2)
+    }
+
+    func testExpiredHelpRequestsArePruned() {
+        let playerID = "A"
+        var request = HelpRequest(playerID: playerID, kind: .shortseaShortage, validSeconds: -1)
+        XCTAssertFalse(request.isActive)
+        request = HelpRequest(playerID: playerID, kind: .shortseaShortage, validSeconds: 90)
+        XCTAssertTrue(request.isActive)
+    }
+
+    func testSuccessfulDropUpdatesSharedHarborMetrics() {
+        let session = InProcessSandboxSession(capacity: 2)
+        let room = session.joinOrCreate(playerName: "A")
+        let playerID = room.world.players[0].id
+        XCTAssertTrue(session.claimCrane(playerID: playerID))
+        let container = room.world.containers[0]
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", containerID: container.id))
+        session.setCranePhase(craneID: "kraan-1", phase: .verifying)
+        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", destination: .truck))
+        let snapshot = session.roomSnapshot()
+        XCTAssertEqual(snapshot?.world.metrics.throughput, 1)
+        XCTAssertGreaterThan(snapshot?.world.metrics.harborScore ?? 0, 0)
+        XCTAssertEqual(snapshot?.world.contracts[0].progress, 1)
+    }
+
+    func testLiftAndDropStateMachine() {
+        let session = InProcessSandboxSession(capacity: 2)
+        let room = session.joinOrCreate(playerName: "A")
+        let playerID = room.world.players[0].id
+        XCTAssertTrue(session.claimCrane(playerID: playerID))
+
+        let container = room.world.containers[0]
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", containerID: container.id))
+        session.setCranePhase(craneID: "kraan-1", phase: .moving)
+        session.setCranePhase(craneID: "kraan-1", phase: .verifying)
+        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", destination: .truck))
+
+        let snapshot = session.roomSnapshot()
+        XCTAssertEqual(snapshot?.world.deliveredCount, 1)
+        XCTAssertEqual(snapshot?.world.containers[0].location, .destination(.truck))
+        XCTAssertEqual(snapshot?.world.containers[0].loadingStatus, "Gelost")
+    }
+
+    func testContainerCannotDropBeforeVerifying() {
+        let session = InProcessSandboxSession(capacity: 2)
+        _ = session.joinOrCreate(playerName: "A")
+        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", destination: .train))
+    }
+
+    func testRoomCapacityRejectsThirdPlayer() {
+        let session = InProcessSandboxSession(capacity: 2)
+        let first = session.joinOrCreate(playerName: "A")
+        let second = session.join(roomID: first.id, playerName: "B")
+        XCTAssertNotNil(second)
+        XCTAssertTrue(second?.isFull ?? false)
+        XCTAssertNil(session.join(roomID: first.id, playerName: "C"))
+    }
+
+    func testMatchmakingCreatesRoomWhenNoRoomIsAvailable() {
+        let session = InProcessSandboxSession(capacity: 1)
+        let first = session.joinOrCreate(playerName: "A")
+        let second = session.joinOrCreate(playerName: "B")
+        XCTAssertNotEqual(first.id, second.id)
+        XCTAssertEqual(second.world.players.count, 1)
+    }
+
+    func testMatchmakingJoinsExistingOpenRoom() {
+        let session = InProcessSandboxSession(capacity: 2)
+        let first = session.joinOrCreate(playerName: "A")
+        let second = session.joinOrCreate(playerName: "B")
+        XCTAssertEqual(first.id, second.id)
+        XCTAssertEqual(second.world.players.count, 2)
+    }
+
+    func testDestinationValidationRequiresReadyCrane() {
+        var world = SandboxWorld()
+        world.cranes[0].phase = .idle
+        XCTAssertEqual(
+            SandboxWorldMutation.validateDrop(world: world, craneID: "kraan-1", destination: .train),
+            .craneNotReady
+        )
+    }
+}
+
 final class UpgradeTests: XCTestCase {
     func testExtraTimeAddsSeconds() {
         var effect = UpgradeEffect()

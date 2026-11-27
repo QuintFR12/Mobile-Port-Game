@@ -239,6 +239,8 @@ struct ProfileEditorView: View {
 
 struct HarborRealityView: View {
     let containers: [CargoContainer]
+    var craneX: Float = 0
+    var craneLoaded: Bool = false
 
     var body: some View {
         RealityView { content in
@@ -308,7 +310,9 @@ struct HarborRealityView: View {
                 world.addChild(zone)
             }
 
-            world.addChild(HarborRealityView.makeCrane(position: [-2.7, 0.0, -2.25]))
+            let gantryCrane = HarborRealityView.makeCrane(position: [-2.7, 0.0, -2.25])
+            gantryCrane.name = "gantry-crane"
+            world.addChild(gantryCrane)
             world.addChild(HarborRealityView.makeCrane(position: [2.7, 0.0, -2.25]))
             world.addChild(HarborRealityView.makeTruck(position: [-4.4, 0.0, -0.8], color: UIColor(red: 0.62, green: 0.18, blue: 0.12, alpha: 1)))
             world.addChild(HarborRealityView.makeTruck(position: [4.2, 0.0, -0.55], color: UIColor(red: 0.20, green: 0.32, blue: 0.42, alpha: 1)))
@@ -329,6 +333,10 @@ struct HarborRealityView: View {
 
             content.add(world)
         } update: { content in
+            if let world = content.entities.first(where: { $0.name == "harbor-world" }),
+               let crane = world.children.first(where: { $0.name == "gantry-crane" }) {
+                crane.position.x = craneX
+            }
             if let world = content.entities.first(where: { $0.name == "harbor-world" }),
                world.children.contains(where: { $0.name == "active-container-stack" }) {
                 world.children.removeAll { $0.name == "active-container-stack" }
@@ -478,6 +486,9 @@ struct GameView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var containers: [CargoContainer]
     @State private var selectedContainerID: UUID?
+    @State private var craneX: Float = -2.7
+    @State private var craneLoaded = false
+    @State private var craneTarget: CargoType?
     @State private var secondsRemaining = 90
     @State private var score = 0
     @State private var streak = 0
@@ -554,7 +565,11 @@ struct GameView: View {
                 .frame(height: 28)
 
             if realityReady {
-                HarborRealityView(containers: containers)
+                HarborRealityView(
+                    containers: containers,
+                    craneX: craneX,
+                    craneLoaded: craneLoaded
+                )
                     .frame(maxWidth: 720, minHeight: 280, maxHeight: 420)
                     .clipShape(RoundedRectangle(cornerRadius: 18))
                     .overlay(
@@ -568,6 +583,47 @@ struct GameView: View {
                     .frame(maxWidth: 720, minHeight: 280, maxHeight: 420)
                     .padding(.horizontal)
             }
+
+            HStack(spacing: 10) {
+                Button {
+                    craneX = max(-5.5, craneX - 1.0)
+                } label: {
+                    Label("Links", systemImage: "arrow.left")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    if craneLoaded, let craneTarget {
+                        placeContainerWithCrane(at: craneTarget)
+                    } else if let selectedContainerID,
+                             let container = containers.first(where: { $0.id == selectedContainerID }),
+                             abs(craneX - cranePosition(for: container.type)) <= 1.05 {
+                        craneLoaded = true
+                        craneTarget = container.type
+                        lastMessage = "\(container.type.title)-container geladen"
+                    } else if let selectedContainerID,
+                              let container = containers.first(where: { $0.id == selectedContainerID }) {
+                        craneX = cranePosition(for: container.type)
+                        lastMessage = "Kraan rijdt naar \(container.type.title)"
+                    } else {
+                        lastMessage = "Tik eerst een container aan"
+                    }
+                } label: {
+                    Text(craneLoaded ? "Lossen" : "Laden")
+                        .frame(maxWidth: 90)
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    craneX = min(5.5, craneX + 1.0)
+                } label: {
+                    Label("Rechts", systemImage: "arrow.right")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.bordered)
+            }
+            .foregroundStyle(.white)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
@@ -616,20 +672,22 @@ struct GameView: View {
         .frame(width: 112, height: 120)
         .contentShape(Rectangle())
         .onTapGesture {
-            if let selectedContainerID,
-               let container = containers.first(where: { $0.id == selectedContainerID }) {
-                place(container, in: type)
-                self.selectedContainerID = nil
-            } else {
-                lastMessage = "Tik eerst een container aan"
-            }
+            craneTarget = type
+            craneX = cranePosition(for: type)
+            lastMessage = craneLoaded
+                ? "Rijd met geladen kraan naar \(type.title)"
+                : "Bestemming \(type.title) gekozen"
         }
         .dropDestination(for: String.self) { items, _ in
             guard let idText = items.first,
                   let container = containers.first(where: { $0.id.uuidString == idText }) else {
                 return false
             }
-            place(container, in: type)
+            selectedContainerID = container.id
+            craneLoaded = true
+            craneTarget = type
+            craneX = cranePosition(for: type)
+            placeContainerWithCrane(at: type)
             return true
         }
     }
@@ -655,9 +713,36 @@ struct GameView: View {
         .contentShape(Rectangle())
         .onTapGesture {
             selectedContainerID = container.id
-            lastMessage = "Container \(container.type.title) gekozen"
+            craneLoaded = false
+            craneTarget = nil
+            craneX = cranePosition(for: container.type)
+            lastMessage = "Container \(container.type.title) gekozen; druk op Laden"
         }
         .draggable(container.id.uuidString)
+    }
+
+    private func cranePosition(for type: CargoType) -> Float {
+        switch type {
+        case .barge: return -4.8
+        case .shortsea: return -2.4
+        case .deepsea: return 0.0
+        case .train: return 2.4
+        case .truck: return 4.8
+        case .terminal: return 5.0
+        }
+    }
+
+    private func placeContainerWithCrane(at destination: CargoType) {
+        guard craneLoaded,
+              abs(craneX - cranePosition(for: destination)) <= 1.05,
+              let selectedContainerID,
+              let container = containers.first(where: { $0.id == selectedContainerID }) else {
+            lastMessage = "Beweeg de kraan eerst naar de juiste plek"
+            return
+        }
+        place(container, in: destination)
+        craneLoaded = false
+        craneTarget = nil
     }
 
     private func place(_ container: CargoContainer, in destination: CargoType) {
@@ -771,6 +856,10 @@ struct GameView: View {
         streak = 0
         mistakes = 0
         lastMessage = "Sleep een container naar de juiste plek"
+        selectedContainerID = nil
+        craneLoaded = false
+        craneTarget = nil
+        craneX = -2.7
         score = mode == .roguelike ? run.totalScore : 0
         status = .playing
         timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()

@@ -38,6 +38,21 @@ public enum SandboxLocation: Hashable, Codable, Sendable {
         case .destination(let destination): return destination.title
         }
     }
+
+    public var position: (x: Double, z: Double)? {
+        switch self {
+        case .source(let source):
+            switch source {
+            case .barge: return (-3.5, -4.2)
+            case .shortsea: return (0, -4.2)
+            case .deepsea: return (3.5, -4.2)
+            }
+        case .destination(let destination):
+            return (destination == .train ? -2.8 : 2.8, 1.7)
+        case .crane:
+            return nil
+        }
+    }
 }
 
 public enum CranePhase: String, Codable, Sendable {
@@ -67,6 +82,7 @@ public struct SandboxCrane: Identifiable, Codable, Equatable, Sendable {
     public let id: String
     public var ownerPlayerID: String?
     public var positionX: Double
+    public var positionZ: Double
     public var phase: CranePhase
     public var heldContainerID: UUID?
 
@@ -74,6 +90,7 @@ public struct SandboxCrane: Identifiable, Codable, Equatable, Sendable {
         self.id = id
         self.ownerPlayerID = ownerPlayerID
         self.positionX = positionX
+        self.positionZ = -1.0
         self.phase = phase
         self.heldContainerID = nil
     }
@@ -223,11 +240,14 @@ public struct SandboxWorldMutation {
         guard let crane = world.cranes.first(where: { $0.id == craneID }) else {
             return .craneNotReady
         }
-        guard crane.phase == .verifying, crane.heldContainerID != nil else {
-            return .craneNotReady
+        guard let containerID = crane.heldContainerID,
+              world.containers.contains(where: { $0.id == containerID && $0.location == .crane }) else {
+            return .noContainer
         }
-        guard HarborDestination.allCases.contains(destination) else {
-            return .destinationUnavailable
+        guard crane.phase == .moving,
+              let position = SandboxLocation.destination(destination).position,
+              crane.positionX == position.x, crane.positionZ == position.z else {
+            return .craneNotReady
         }
         return .valid
     }

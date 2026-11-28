@@ -67,11 +67,13 @@ Geteste onderwerpen: containers en lift/drops, room-capaciteit, matchmaking, hul
 
 ## Handmatige test
 
-1. **Nieuw kamer/lobby**: vul een naam in en kies "Nieuwe of vrije kamer".
-2. **Claim kraan**: kies Claim kraan.
-3. **Selecteer en hef**: kies Barge/Shortsea/Deepsea; beweeg Links/Rechts indien nodig.
-4. **Los**: kies Los op Treinwagon of Vrachtwagen.
-5. **Help**: open Request Help en kies één of twee tijdelijke needs.
+1. De app opent automatisch een lokale kamer. Kies **Neem kraan in gebruik**.
+2. Kies een **container bij een schip** en verplaats de kraan naar dat schip.
+3. Kies **Hef container**. Het schip blijft liggen; alleen de container hangt aan de kraan.
+4. Kies **Treinwagon** of **Vrachtwagen**, verplaats de container naar die bestemming en kies **Los container**.
+5. Herhaal met een volgende container. Met **Vraag hulp** kun je maximaal twee tijdelijke hulpverzoeken plaatsen.
+
+De verplaatsknoppen zetten de kraan direct op de gekozen plek; er is nog geen animatie of handmatige besturing. De kleuren van de containers verwijzen naar hun bronschip, niet naar een verplichte bestemming.
 
 ## MVP-beperkingen
 

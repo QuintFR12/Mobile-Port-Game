@@ -17,6 +17,8 @@ final class SandboxViewModel: ObservableObject {
     @Published var playerName = "Speler"
     @Published var roomCode = ""
     @Published var statusMessage = "Kies een kamer"
+    @Published var selectedContainerID: UUID?
+    @Published var selectedDestination: HarborDestination?
 
     init(session: InProcessSandboxSession = InProcessSandboxSession(capacity: 2)) {
         self.session = session
@@ -24,7 +26,7 @@ final class SandboxViewModel: ObservableObject {
 
     func joinOrCreate() {
         room = session.joinOrCreate(playerName: playerName)
-        statusMessage = "Kamer \(room?.id ?? "") is gereed"
+        statusMessage = "Neem de kraan in gebruik om te beginnen."
     }
 
     func joinCode() {
@@ -48,44 +50,57 @@ final class SandboxViewModel: ObservableObject {
             return
         }
         refresh()
-        statusMessage = "Kraan geclaimed"
+        statusMessage = "Kraan in gebruik. Kies een container bij een schip."
     }
 
-    func lift(_ container: SandboxContainer) {
-        guard session.liftContainer(craneID: "kraan-1", containerID: container.id) else {
-            statusMessage = "Claim eerst de kraan en kies een bron"
+    var playerID: String? { room?.world.players.first?.id }
+    var crane: SandboxCrane? { room?.world.cranes.first }
+    var hasCrane: Bool { playerID != nil && crane?.ownerPlayerID == playerID }
+    var selectedContainer: SandboxContainer? {
+        room?.world.containers.first(where: { $0.id == selectedContainerID })
+    }
+
+    func selectContainer(_ container: SandboxContainer) {
+        guard hasCrane, crane?.heldContainerID == nil, case .source = container.location else { return }
+        selectedContainerID = container.id
+        selectedDestination = nil
+        statusMessage = "Container van \(container.source.title) gekozen. Verplaats de kraan naar het schip."
+    }
+
+    func moveToSource() {
+        guard let playerID, let container = selectedContainer,
+              session.moveCrane(craneID: "kraan-1", playerID: playerID, to: container.location) else {
+            statusMessage = "Kies eerst een beschikbare container en neem de kraan in gebruik."
             return
         }
         refresh()
-        statusMessage = "\(container.source.title) opgetild"
+        statusMessage = "Kraan bij \(container.source.title). Hef nu de container."
     }
 
-    func moveLeft() {
-        guard let room else { return }
-        session.setCranePhase(craneID: "kraan-1", phase: .moving)
-        if var crane = room.world.cranes.first {
-            crane.positionX = max(-3.5, crane.positionX - 0.8)
-            crane.phase = .moving
-            var world = room.world
-            world.cranes[0] = crane
-            session.updateWorld(world)
+    func lift() {
+        guard let playerID, let container = selectedContainer,
+              session.liftContainer(craneID: "kraan-1", playerID: playerID, containerID: container.id) else {
+            statusMessage = "Verplaats de kraan eerst naar de gekozen container."
+            return
         }
         refresh()
-        statusMessage = "Kraan beweegt"
+        statusMessage = "Container van \(container.source.title) hangt aan de kraan. Kies een bestemming."
     }
 
-    func moveRight() {
-        guard let room else { return }
-        session.setCranePhase(craneID: "kraan-1", phase: .moving)
-        if var crane = room.world.cranes.first {
-            crane.positionX = min(3.5, crane.positionX + 0.8)
-            crane.phase = .moving
-            var world = room.world
-            world.cranes[0] = crane
-            session.updateWorld(world)
+    func selectDestination(_ destination: HarborDestination) {
+        guard hasCrane, crane?.heldContainerID != nil else { return }
+        selectedDestination = destination
+        statusMessage = "Bestemming \(destination.title) gekozen. Verplaats de kraan met de container."
+    }
+
+    func moveToDestination() {
+        guard let playerID, let destination = selectedDestination,
+              session.moveCrane(craneID: "kraan-1", playerID: playerID, to: .destination(destination)) else {
+            statusMessage = "Hef eerst een container en kies een bestemming."
+            return
         }
         refresh()
-        statusMessage = "Kraan beweegt"
+        statusMessage = "Container bij \(destination.title). Los de container."
     }
 
     func requestHelp(_ kind: HelpRequestKind) {
@@ -105,23 +120,16 @@ final class SandboxViewModel: ObservableObject {
         }
     }
 
-    func verifyLower(_ destination: HarborDestination) {
-        guard let room else { return }
-        guard var crane = room.world.cranes.first,
-              crane.heldContainerID != nil else {
-            statusMessage = "Til eerst een container"
-            return
-        }
-        crane.phase = .verifying
-        var world = room.world
-        world.cranes[0] = crane
-        session.updateWorld(world)
-        guard session.lowerContainer(craneID: "kraan-1", destination: destination) else {
-            statusMessage = "Losactie is niet geldig"
+    func lower() {
+        guard let playerID, let destination = selectedDestination,
+              session.lowerContainer(craneID: "kraan-1", playerID: playerID, destination: destination) else {
+            statusMessage = "Verplaats de container eerst naar de gekozen bestemming."
             return
         }
         refresh()
-        statusMessage = "Container gelost op \(destination.title)"
+        selectedContainerID = nil
+        selectedDestination = nil
+        statusMessage = "Container gelost op \(destination.title). Kies een volgende container."
     }
 }
 
@@ -205,39 +213,77 @@ struct SandboxWorldView: View {
             .padding(.horizontal)
 
             Text(model.statusMessage)
+                .font(.subheadline)
                 .foregroundStyle(.yellow)
-                .frame(height: 24)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity, minHeight: 40)
+                .padding(.horizontal)
 
             HarborScene(world: room.world)
-                .frame(maxWidth: 720, minHeight: 280, maxHeight: 420)
+                .frame(maxWidth: 720, minHeight: 180, maxHeight: 280)
                 .clipShape(RoundedRectangle(cornerRadius: 16))
                 .padding(.horizontal)
 
-            HStack {
-                Button("Claim kraan") { model.claimCrane() }
-                Button("Links") { model.moveLeft() }
-                Button("Rechts") { model.moveRight() }
-            }
-            .buttonStyle(.borderedProminent)
-
-            HStack(spacing: 10) {
-                ForEach(room.world.containers.filter {
+            if !model.hasCrane {
+                Button("1. Neem kraan in gebruik") { model.claimCrane() }
+                    .buttonStyle(.borderedProminent)
+            } else if model.crane?.heldContainerID == nil {
+                Text("2. Kies een container bij een schip")
+                    .foregroundStyle(.white)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 10) {
+                        ForEach(room.world.containers.filter {
+                            if case .source = $0.location { return true }
+                            return false
+                        }) { container in
+                            Button(model.selectedContainerID == container.id
+                                   ? "Gekozen: \(container.source.title)"
+                                   : "Container: \(container.source.title)") {
+                                model.selectContainer(container)
+                            }
+                            .buttonStyle(.bordered)
+                            .tint(model.selectedContainerID == container.id ? .yellow : .cyan)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                if let container = model.selectedContainer, let position = container.location.position {
+                    if model.crane?.positionX == position.x && model.crane?.positionZ == position.z {
+                        Button("3. Hef container") { model.lift() }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("3. Verplaats kraan naar \(container.source.title)") { model.moveToSource() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else if !room.world.containers.contains(where: {
                     if case .source = $0.location { return true }
                     return false
-                }) { container in
-                    Button(container.source.title) {
-                        model.lift(container)
-                    }
-                    .buttonStyle(.bordered)
+                }) {
+                    Text("Alle containers zijn gelost.").foregroundStyle(.white)
                 }
-            }
-
-            HStack(spacing: 12) {
-                ForEach(HarborDestination.allCases, id: \.self) { destination in
-                    Button("Los op \(destination.title)") {
-                        model.verifyLower(destination)
+            } else {
+                Text("4. Kies een bestemming voor de container")
+                    .foregroundStyle(.white)
+                HStack(spacing: 12) {
+                    ForEach(HarborDestination.allCases, id: \.self) { destination in
+                        Button(model.selectedDestination == destination ? "Gekozen: \(destination.title)" : destination.title) {
+                            model.selectDestination(destination)
+                        }
+                            .buttonStyle(.bordered)
+                            .tint(model.selectedDestination == destination ? .yellow : .cyan)
                     }
-                    .buttonStyle(.borderedProminent)
+                }
+                if let destination = model.selectedDestination,
+                   let position = SandboxLocation.destination(destination).position {
+                    if model.crane?.phase == .moving,
+                       model.crane?.positionX == position.x && model.crane?.positionZ == position.z {
+                        Button("6. Los container op \(destination.title)") { model.lower() }
+                            .buttonStyle(.borderedProminent)
+                    } else {
+                        Button("5. Verplaats container naar \(destination.title)") { model.moveToDestination() }
+                            .buttonStyle(.borderedProminent)
+                    }
                 }
             }
 
@@ -253,7 +299,7 @@ struct SandboxWorldView: View {
             }
 
             HStack {
-                Button("Request Help") {
+                Button("Vraag hulp") {
                     showHelp = true
                 }
                 .buttonStyle(.bordered)
@@ -329,7 +375,8 @@ struct HarborScene: View {
             worldEntity.addChild(HarborScene.makeCommandBoard(metrics: world.metrics))
 
             let cranePosition = world.cranes.first?.positionX ?? 0
-            worldEntity.addChild(HarborScene.makeCrane(positionX: Float(cranePosition)))
+            let craneZ = world.cranes.first?.positionZ ?? -1
+            worldEntity.addChild(HarborScene.makeCrane(positionX: Float(cranePosition), positionZ: Float(craneZ)))
             content.add(worldEntity)
         } update: { content in
             guard let worldEntity = content.entities.first(where: { $0.name == "sandbox-world" }) else { return }
@@ -340,21 +387,26 @@ struct HarborScene: View {
             }
 
             let cranePosition = world.cranes.first?.positionX ?? 0
-            worldEntity.addChild(HarborScene.makeCrane(positionX: Float(cranePosition)))
+            let craneZ = world.cranes.first?.positionZ ?? -1
+            worldEntity.addChild(HarborScene.makeCrane(positionX: Float(cranePosition), positionZ: Float(craneZ)))
             worldEntity.addChild(HarborScene.makeCommandBoard(metrics: world.metrics))
 
+            var destinationCounts: [HarborDestination: Int] = [:]
             for container in world.containers {
                 let position: SIMD3<Float>
                 switch container.location {
-                case .source(let source):
-                    let sourceIndex = HarborSource.allCases.firstIndex(of: source) ?? 0
-                    position = [Float(sourceIndex) * 3.5 - 3.5, 0.45, -4.2]
+                case .source:
+                    guard let point = container.location.position else { continue }
+                    position = [Float(point.x), 0.45, Float(point.z)]
                 case .crane:
-                    position = [Float(cranePosition), 1.15, -1.5]
+                    position = [Float(cranePosition), 1.55, Float(craneZ)]
                 case .destination(let destination):
-                    position = destination == .train ? [-2.8, 0.45, 1.7] : [2.8, 0.45, 1.7]
+                    guard let point = container.location.position else { continue }
+                    let count = destinationCounts[destination, default: 0]
+                    destinationCounts[destination] = count + 1
+                    position = [Float(point.x), 0.38 + Float(count) * 0.55, Float(point.z)]
                 }
-                let entity = HarborScene.makeBox([1.0, 0.55, 0.55], position, HarborScene.sourceColor(container.source))
+                let entity = HarborScene.makeBox([1.0, 0.55, 0.55], position, HarborScene.containerColor(container.source))
                 entity.name = "container-\(container.id.uuidString)"
                 worldEntity.addChild(entity)
             }
@@ -387,13 +439,14 @@ struct HarborScene: View {
         return board
     }
 
-    static func makeCrane(positionX: Float) -> Entity {
+    static func makeCrane(positionX: Float, positionZ: Float) -> Entity {
         let crane = Entity()
         crane.name = "live-crane"
-        crane.position = [positionX, 0, -1.0]
+        crane.position = [positionX, 0, positionZ]
         crane.addChild(makeBox([0.16, 2.2, 0.16], [-0.8, 1.1, 0], UIColor(red: 0.72, green: 0.43, blue: 0.16, alpha: 1)))
         crane.addChild(makeBox([0.16, 2.2, 0.16], [0.8, 1.1, 0], UIColor(red: 0.72, green: 0.43, blue: 0.16, alpha: 1)))
         crane.addChild(makeBox([2.2, 0.18, 0.18], [0, 2.15, 0], UIColor(red: 0.72, green: 0.43, blue: 0.16, alpha: 1)))
+        crane.addChild(makeBox([0.05, 0.24, 0.05], [0, 1.96, 0], .lightGray))
         return crane
     }
 
@@ -402,6 +455,14 @@ struct HarborScene: View {
         case .barge: return UIColor(red: 0.38, green: 0.50, blue: 0.55, alpha: 1)
         case .shortsea: return UIColor(red: 0.11, green: 0.34, blue: 0.50, alpha: 1)
         case .deepsea: return UIColor(red: 0.16, green: 0.25, blue: 0.31, alpha: 1)
+        }
+    }
+
+    static func containerColor(_ source: HarborSource) -> UIColor {
+        switch source {
+        case .barge: return UIColor(red: 0.71, green: 0.83, blue: 0.86, alpha: 1)
+        case .shortsea: return UIColor(red: 0.23, green: 0.66, blue: 0.88, alpha: 1)
+        case .deepsea: return UIColor(red: 0.56, green: 0.64, blue: 0.76, alpha: 1)
         }
     }
 

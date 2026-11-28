@@ -76,7 +76,9 @@ public final class InProcessSandboxSession: SandboxSessionProtocol, @unchecked S
     public func claimCrane(playerID: String) -> Bool {
         guard let activeRoomID, var room = rooms[activeRoomID] else { return false }
         guard var crane = room.world.cranes.first else { return false }
-        guard crane.ownerPlayerID == nil || crane.ownerPlayerID == playerID else { return false }
+        guard room.world.players.contains(where: { $0.id == playerID }),
+              crane.ownerPlayerID == nil || crane.ownerPlayerID == playerID else { return false }
+        if crane.ownerPlayerID == playerID { return true }
         crane.ownerPlayerID = playerID
         crane.phase = .selected
         room.world.cranes[0] = crane
@@ -84,12 +86,38 @@ public final class InProcessSandboxSession: SandboxSessionProtocol, @unchecked S
         return true
     }
 
-    public func liftContainer(craneID: String, containerID: UUID) -> Bool {
+    public func moveCrane(craneID: String, playerID: String, to location: SandboxLocation) -> Bool {
+        guard let activeRoomID, var room = rooms[activeRoomID],
+              let index = room.world.cranes.firstIndex(where: { $0.id == craneID }),
+              room.world.cranes[index].ownerPlayerID == playerID,
+              let position = location.position else { return false }
+        let crane = room.world.cranes[index]
+        switch location {
+        case .source:
+            guard crane.heldContainerID == nil, crane.phase == .selected else { return false }
+        case .destination:
+            guard crane.heldContainerID != nil,
+                  crane.phase == .lifting || crane.phase == .moving else { return false }
+        case .crane:
+            return false
+        }
+        room.world.cranes[index].positionX = position.x
+        room.world.cranes[index].positionZ = position.z
+        if crane.heldContainerID != nil { room.world.cranes[index].phase = .moving }
+        rooms[activeRoomID] = room
+        return true
+    }
+
+    public func liftContainer(craneID: String, playerID: String, containerID: UUID) -> Bool {
         guard let activeRoomID, var room = rooms[activeRoomID] else { return false }
         guard var crane = room.world.cranes.first(where: { $0.id == craneID }),
+              crane.ownerPlayerID == playerID,
               crane.phase == .selected,
+              crane.heldContainerID == nil,
               var container = room.world.containers.first(where: { $0.id == containerID }),
-              case .source = container.location else { return false }
+              case .source = container.location,
+              let position = container.location.position,
+              crane.positionX == position.x, crane.positionZ == position.z else { return false }
         crane.phase = .lifting
         crane.heldContainerID = containerID
         container.location = .crane
@@ -102,13 +130,6 @@ public final class InProcessSandboxSession: SandboxSessionProtocol, @unchecked S
         }
         rooms[activeRoomID] = room
         return true
-    }
-
-    public func setCranePhase(craneID: String, phase: CranePhase) {
-        guard let activeRoomID, var room = rooms[activeRoomID] else { return }
-        guard let index = room.world.cranes.firstIndex(where: { $0.id == craneID }) else { return }
-        room.world.cranes[index].phase = phase
-        rooms[activeRoomID] = room
     }
 
     public func addHelpRequest(playerID: String, kind: HelpRequestKind) -> Bool {
@@ -129,14 +150,15 @@ public final class InProcessSandboxSession: SandboxSessionProtocol, @unchecked S
         return true
     }
 
-    public func lowerContainer(craneID: String, destination: HarborDestination) -> Bool {
+    public func lowerContainer(craneID: String, playerID: String, destination: HarborDestination) -> Bool {
         guard let activeRoomID, var room = rooms[activeRoomID] else { return false }
         let validation = SandboxWorldMutation.validateDrop(world: room.world, craneID: craneID, destination: destination)
         guard validation == .valid,
               var crane = room.world.cranes.first(where: { $0.id == craneID }),
+              crane.ownerPlayerID == playerID,
               let containerID = crane.heldContainerID,
               var container = room.world.containers.first(where: { $0.id == containerID }) else { return false }
-        crane.phase = .idle
+        crane.phase = .selected
         crane.heldContainerID = nil
         container.location = .destination(destination)
         container.loadingStatus = "Gelost"

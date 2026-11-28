@@ -91,9 +91,10 @@ final class SandboxWorldTests: XCTestCase {
         let playerID = room.world.players[0].id
         XCTAssertTrue(session.claimCrane(playerID: playerID))
         let container = room.world.containers[0]
-        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", containerID: container.id))
-        session.setCranePhase(craneID: "kraan-1", phase: .verifying)
-        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", destination: .truck))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: playerID, to: container.location))
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", playerID: playerID, containerID: container.id))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: playerID, to: .destination(.truck)))
+        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", playerID: playerID, destination: .truck))
         let snapshot = session.roomSnapshot()
         XCTAssertEqual(snapshot?.world.metrics.throughput, 1)
         XCTAssertGreaterThan(snapshot?.world.metrics.harborScore ?? 0, 0)
@@ -107,21 +108,50 @@ final class SandboxWorldTests: XCTestCase {
         XCTAssertTrue(session.claimCrane(playerID: playerID))
 
         let container = room.world.containers[0]
-        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", containerID: container.id))
-        session.setCranePhase(craneID: "kraan-1", phase: .moving)
-        session.setCranePhase(craneID: "kraan-1", phase: .verifying)
-        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", destination: .truck))
+        XCTAssertFalse(session.liftContainer(craneID: "kraan-1", playerID: playerID, containerID: container.id))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: playerID, to: container.location))
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", playerID: playerID, containerID: container.id))
+        XCTAssertTrue(session.claimCrane(playerID: playerID))
+        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", playerID: playerID, destination: .truck))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: playerID, to: .destination(.truck)))
+        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", playerID: playerID, destination: .train))
+        XCTAssertTrue(session.lowerContainer(craneID: "kraan-1", playerID: playerID, destination: .truck))
 
         let snapshot = session.roomSnapshot()
         XCTAssertEqual(snapshot?.world.deliveredCount, 1)
         XCTAssertEqual(snapshot?.world.containers[0].location, .destination(.truck))
         XCTAssertEqual(snapshot?.world.containers[0].loadingStatus, "Gelost")
+        XCTAssertEqual(snapshot?.world.cranes[0].phase, .selected)
+        XCTAssertNil(snapshot?.world.cranes[0].heldContainerID)
+        let next = room.world.containers[1]
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: playerID, to: next.location))
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", playerID: playerID, containerID: next.id))
     }
 
     func testContainerCannotDropBeforeVerifying() {
         let session = InProcessSandboxSession(capacity: 2)
-        _ = session.joinOrCreate(playerName: "A")
-        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", destination: .train))
+        let room = session.joinOrCreate(playerName: "A")
+        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", playerID: room.world.players[0].id, destination: .train))
+    }
+
+    func testOnlyOwnerCanOperateCraneOrReplaceHeldContainer() {
+        let session = InProcessSandboxSession()
+        let room = session.joinOrCreate(playerName: "A")
+        let owner = room.world.players[0].id
+        let other = session.join(roomID: room.id, playerName: "B")!.world.players[1].id
+        let container = room.world.containers[0]
+        XCTAssertFalse(session.claimCrane(playerID: "unknown"))
+        XCTAssertTrue(session.claimCrane(playerID: owner))
+        XCTAssertFalse(session.claimCrane(playerID: other))
+        XCTAssertFalse(session.moveCrane(craneID: "kraan-1", playerID: other, to: container.location))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: owner, to: container.location))
+        XCTAssertFalse(session.liftContainer(craneID: "kraan-1", playerID: other, containerID: container.id))
+        XCTAssertTrue(session.liftContainer(craneID: "kraan-1", playerID: owner, containerID: container.id))
+        XCTAssertFalse(session.liftContainer(craneID: "kraan-1", playerID: owner, containerID: room.world.containers[1].id))
+        XCTAssertFalse(session.moveCrane(craneID: "kraan-1", playerID: owner, to: .source(.shortsea)))
+        XCTAssertTrue(session.moveCrane(craneID: "kraan-1", playerID: owner, to: .destination(.train)))
+        XCTAssertFalse(session.lowerContainer(craneID: "kraan-1", playerID: other, destination: .train))
+        XCTAssertEqual(session.roomSnapshot()?.world.containers[0].location, .crane)
     }
 
     func testRoomCapacityRejectsThirdPlayer() {
@@ -154,7 +184,7 @@ final class SandboxWorldTests: XCTestCase {
         world.cranes[0].phase = .idle
         XCTAssertEqual(
             SandboxWorldMutation.validateDrop(world: world, craneID: "kraan-1", destination: .train),
-            .craneNotReady
+            .noContainer
         )
     }
 }
